@@ -1,3 +1,6 @@
+/* Based on the "Remote Direct Memory Access" document from IBM Corp. (see ibm.com/docs/en/ssw_aix_72/rdma/rdma_pdf.pdf) and adapted for the use in RoCE */
+
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -17,17 +20,15 @@ int main(int argc, char *argv[])
 
     //Get CM ID
     struct rdma_cm_id *listen_id;
-    error = rdma_create_id(cm_channel,&listen_id,NULL,RDMA_PS_UDP); 
+    error = rdma_create_id(cm_channel, &listen_id, NULL, RDMA_PS_UDP); 
     if (error) {
         return error;
     }
 
-    
     struct sockaddr_in sin;
     sin.sin_family = AF_INET; 
     sin.sin_port = htons(4791);
     sin.sin_addr.s_addr = INADDR_ANY;
-
     
     //Listen for connection request
     struct rdma_cm_event *event;
@@ -36,7 +37,7 @@ int main(int argc, char *argv[])
     if (error) {
         return 1;
     }
-    error = rdma_listen(listen_id,1);
+    error = rdma_listen(listen_id, 1);
     if (error) {
         return 1;
     }
@@ -67,7 +68,7 @@ int main(int argc, char *argv[])
         //Set up Completion Queue
         struct ibv_cq *cq;  
         struct ibv_cq  *evt_cq;
-        cq = ibv_create_cq(cm_id->verbs,1,NULL,comp_chan,0); 
+        cq = ibv_create_cq(cm_id->verbs,2,NULL,comp_chan,0); 
         if (!cq) {
             return 1;
         }    
@@ -119,7 +120,7 @@ int main(int argc, char *argv[])
         };
         struct pdata rep_pdata;        
         
-        rep_pdata.buf_va = htonl((uintptr_t)buf); 
+        rep_pdata.buf_va = htonl((uintptr_t)buf);
         
         //Prepare key for client
         rep_pdata.buf_rkey = htonl(mr->rkey); 
@@ -156,7 +157,7 @@ int main(int argc, char *argv[])
         send_wr.opcode = IBV_WR_SEND;
         send_wr.send_flags = IBV_SEND_SIGNALED;
         send_wr.sg_list = &sge;
-        send_wr.num_sge = 1 ;
+        send_wr.num_sge = 1;
 
         if (ibv_post_send(cm_id->qp,&send_wr,&bad_send_wr)) 
             return 1;
@@ -167,16 +168,18 @@ int main(int argc, char *argv[])
 
 		if (ibv_get_cq_event(comp_chan,&evt_cq,&cq_context))
 			return 1;
-		ibv_ack_cq_events(cq,1);
 		if (ibv_req_notify_cq(cq,0))
 			return 1;
 		if (ibv_poll_cq(cq,1,&wc) != 1)
 			return 1;
 		if (wc.status != IBV_WC_SUCCESS)
 			return 1;
+
+        ibv_ack_cq_events(cq,2);
+
         
 	    error = rdma_get_cm_event(cm_channel,&event);
-    	if (erorr) {
+    	if (error) {
         	return error;
         }
 	    rdma_ack_cm_event(event);
