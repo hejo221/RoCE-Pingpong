@@ -1,3 +1,5 @@
+/* Based on the "Remote Direct Memory Access" document from IBM Corp. (see ibm.com/docs/en/ssw_aix_72/rdma/rdma_pdf.pdf) and adapted for the use in RoCE */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -34,11 +36,18 @@ int main(int argc, char *argv[])
    		.ai_socktype  = SOCK_STREAM
    	};
 	n = getaddrinfo(argv[1], "4791", &hints, &res);
-	if (n < 0)  
+	if (n < 0) {  
 		return 1;
+	}
 
 	//Resolve Address
-	error = rdma_resolve_addr(cm_id, NULL, res->ai_addr, 5000);
+	struct addrinfo *t;
+	for (t = res; t; t = t -> ai_next) {
+		error = rdma_resolve_addr(cm_id, NULL, t->ai_addr, 5000);
+		if (!error) {
+			break;
+		}
+	}
 	if (error)
 		return error;
 
@@ -61,6 +70,7 @@ int main(int argc, char *argv[])
 		return error;
 	if (event->event != RDMA_CM_EVENT_ROUTE_RESOLVED)
 		return 1; 
+
 	rdma_ack_cm_event(event);
 
 	//Create Protection Domain
@@ -86,7 +96,7 @@ int main(int argc, char *argv[])
 		return 1;
 
     uint32_t *buf; 
-	buf = calloc(2,sizeof(uint32_t)); 
+	buf = calloc(2, sizeof(uint32_t)); 
 	if (!buf) 
 		return 1;
 
@@ -97,7 +107,7 @@ int main(int argc, char *argv[])
 		return 1;
 
     struct ibv_qp_init_attr	qp_attr = { }; 
-	qp_attr.cap.max_send_wr = 4; 
+	qp_attr.cap.max_send_wr = 2; 
 	qp_attr.cap.max_send_sge = 1;
 	qp_attr.cap.max_recv_wr = 1; 
 	qp_attr.cap.max_recv_sge = 1; 
@@ -115,7 +125,7 @@ int main(int argc, char *argv[])
 	conn_param.initiator_depth = 1;
 	conn_param.retry_count     = 7;
 
-	error = rdma_connect(cm_id,&conn_param);
+	error = rdma_connect(cm_id, &conn_param);
 	if (error)
 		return error;
 
@@ -133,7 +143,7 @@ int main(int argc, char *argv[])
     };
     struct pdata server_pdata;
 
-	memcpy(&server_pdata,event->param.conn.private_data,sizeof(server_pdata));
+	memcpy(&server_pdata, event->param.conn.private_data, sizeof(server_pdata));
 	rdma_ack_cm_event(event);
 
 	//Prepare and post Work Request
@@ -149,16 +159,16 @@ int main(int argc, char *argv[])
 	recv_wr.sg_list = &sge;
 	recv_wr.num_sge = 1;
 
-	if (ibv_post_recv(cm_id->qp,&recv_wr,&bad_recv_wr))
+	if (ibv_post_recv(cm_id->qp, &recv_wr, &bad_recv_wr))
 		return 1;
 
-	buf[0] = strtoul(argv[2],NULL,0);
-	buf[1] = strtoul(argv[3],NULL,0);
+	buf[0] = strtoul(argv[2], NULL, 0);
+	buf[1] = strtoul(argv[3], NULL, 0);
 	buf[0] = htonl(buf[0]);
 	buf[1] = htonl(buf[1]);
 
 	sge.addr = (uintptr_t)buf; 
-	sge.length = sizeof(buf);
+	sge.length = sizeof(uint32_t);
 	sge.lkey = mr->lkey;
 
     struct ibv_send_wr send_wr = { }; 
@@ -176,15 +186,15 @@ int main(int argc, char *argv[])
     struct ibv_wc wc; 
     void *cq_context;
 
-	if (ibv_post_send(cm_id->qp,&send_wr,&bad_send_wr))
+	if (ibv_post_send(cm_id->qp, &send_wr, &bad_send_wr))
 		return 1;
 
 	while (1) {
-		if (ibv_get_cq_event(comp_chan,&evt_cq,&cq_context))
+		if (ibv_get_cq_event(comp_chan, &evt_cq, &cq_context))
 			return 1;
-		if (ibv_req_notify_cq(cq,0))
+		if (ibv_req_notify_cq(cq, 0))
 			return 1;
-		if (ibv_poll_cq(cq,1,&wc) != 1)
+		if (ibv_poll_cq(cq, 1, &wc) != 1)
 			return 1;
 		if (wc.status != IBV_WC_SUCCESS)
 			return 1;
@@ -194,9 +204,9 @@ int main(int argc, char *argv[])
 		}
     }
     //Finish transmission and disconnect
-	ibv_ack_cq_events(cq,2);
+	ibv_ack_cq_events(cq, 2);
 	rdma_disconnect(cm_id);
-	error = rdma_get_cm_event(cm_channel,&event);
+	error = rdma_get_cm_event(cm_channel, &event);
 	if (error)
 		return error;
 
