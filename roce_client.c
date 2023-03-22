@@ -18,11 +18,13 @@ static struct ibv_recv_wr server_recv_wr, *bad_server_recv_wr = NULL;
 static struct ibv_sge client_send_sge, server_recv_sge;
 
 //Send and receive buffer for RDMA connection
-static char *send_buf = NULL, *recv_buf = NULL; 
+static char *send_buf = NULL, *recv_buf = NULL;
+static char *msg;
+static int buf_size;
 
 //Basic functionality test
 static int check_send_buf_recv_buf() {
-	return memcmp((void*) send_buf, (void*) recv_buf, strlen(send_buf));
+	return memcmp((void*) send_buf, (void*) recv_buf, buf_size);
 }
 
 //Prepare client side connection resources for RDMA connectio
@@ -238,7 +240,7 @@ static int perform_write_read() {
 	int ret = -1;
 
 	int msg = strlen(send_buf);
-	clockt_t write_start, write_end, read_start, read_end;
+	clock_t write_start, write_end, read_start, read_end;
 	double write_elapsed_time, read_elapsed_time, write_throughput, read_throughput;
 
 	write_start = clock();
@@ -277,9 +279,9 @@ static int perform_write_read() {
 
 	write_end = clock();
 
-	write_elapsed_time = (double)(write_end - write_start) / CLOCKS_PER_SECOND;
+	write_elapsed_time = (double)(write_end - write_start) / CLOCKS_PER_SEC;
 	write_throughput = (double)msg / (write_elapsed_time * 1000000);
-	printf("WRITE throughput: %f MB/s \n", write_throughput)
+	printf("WRITE throughput: %f MB/s \n", write_throughput);
 
 	read_start = clock();
 
@@ -310,9 +312,9 @@ static int perform_write_read() {
 	//READ is complete
 
 	read_end = clock();
-	read_elapsed_time = (double)(read_end - read_start) / CLOCKS_PER_SECOND;
+	read_elapsed_time = (double)(read_end - read_start) / CLOCKS_PER_SEC;
 	read_throughput = (double)msg / (read_elapsed_time * 1000000);
-	printf("READ throughput: %f MB/s \n", read_throughput)
+	printf("READ throughput: %f MB/s \n", read_throughput);
 
 	return 0;
 }
@@ -385,25 +387,14 @@ int main(int argc, char **argv) {
 	server_sockaddr.sin_family = AF_INET;
 	server_sockaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-	send_buf = recv_buf = NULL; 
+	send_buf = recv_buf = msg = NULL;
+	buf_size = 0;
 
-	while ((option = getopt(argc, argv, "s:a:p:")) != -1) {
+	while ((option = getopt(argc, argv, "s:a:p:b:")) != -1) {
 		switch (option) {
 			case 's':
 				printf("Passed message is : %s , with size %u \n", optarg, (unsigned int) strlen(optarg));
-				send_buf = calloc(strlen(optarg) , 1);
-				if (!send_buf) {
-					printf("Could not allocate memory \n");
-					return -ENOMEM;
-				}
-
-				strncpy(send_buf, optarg, strlen(optarg));
-				recv_buf = calloc(strlen(optarg), 1);
-				if (!recv_buf) {
-					printf("Could not allocate memory \n");
-					free(send_buf);
-					return -ENOMEM;
-				}
+				msg = optarg;
 				break;
 			case 'a':
 				ret = get_addr(optarg, (struct sockaddr*) &server_sockaddr);
@@ -415,7 +406,17 @@ int main(int argc, char **argv) {
 			case 'p':
 				server_sockaddr.sin_port = htons(strtol(optarg, NULL, 0)); 
 				break;
-			default:
+			case 'b':
+				buf_size = atoi(optarg);
+				send_buf = calloc(buf_size, 1);
+				recv_buf = calloc(buf_size, 1);
+				if (!send_buf || !recv_buf) {
+					printf("Could not allocate memory for buffers \n");
+					return 1;
+				}
+				strncpy(send_buf, msg, buf_size);
+				break;
+ 			default:
 				show_usage();
 				break;
 		}
@@ -436,7 +437,7 @@ int main(int argc, char **argv) {
 		return ret;
 	}
 
-	ret = client_pre_post_recv_buffer(); 
+	ret = client_pre_post_recv_buffer(buf_size); 
 	if (ret) { 
 		printf("Could not set up client connection \n");
 		return ret;
@@ -463,7 +464,7 @@ int main(int argc, char **argv) {
 	if (check_send_buf_recv_buf()) {
 		printf("Functional test failed \n");
 	} else {
-		printf("...\n Functional test was successful \n");
+		printf("Functional test was successful \n");
 	}
 
 	ret = client_disconnect_and_clean();
