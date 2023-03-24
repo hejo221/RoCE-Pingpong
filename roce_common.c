@@ -14,7 +14,7 @@ struct ibv_mr* roce_alloc_buffer(struct ibv_pd *pd, uint32_t size, enum ibv_acce
 		return NULL;
 	}
 
-	mr = roce_alloc_buffer(pd, size, permission);
+	mr = roce_register_buffer(pd, buf, size, permission);
 	if(!mr) {
 		free(buf);
 	}
@@ -39,7 +39,7 @@ struct ibv_mr *roce_register_buffer(struct ibv_pd *pd, void *addr, uint32_t leng
 	return mr;
 }
 
-//Free allocated buffers
+//Free allocated bufferss
 void roce_free_buffer(struct ibv_mr *mr) {
 	if (!mr) {
 		printf("Passed memory region NULL \n");
