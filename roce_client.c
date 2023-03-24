@@ -38,7 +38,7 @@ static int client_prepare_connection(struct sockaddr_in *s_addr) {
 		return -errno;
 	}
 
-	ret = rdma_create_id(cm_event_channel, &cm_client_id, NULL, RDMA_PS_UDP);
+	ret = rdma_create_id(cm_event_channel, &cm_client_id, NULL, RDMA_PS_TCP);
 	if (ret) {
 		printf("Could not create CM ID /n"); 
 		return -errno;
@@ -127,7 +127,7 @@ static int client_prepare_connection(struct sockaddr_in *s_addr) {
 }
 
 //Pre-post RB
-static int client_pre_post_recv_buffer()
+static int client_pre_post_recv_buffer(int buf_size)
 {
 	int ret = -1;
 
@@ -137,8 +137,8 @@ static int client_pre_post_recv_buffer()
 		return -ENOMEM;
 	}
 
-	server_recv_sge.addr = (uint64_t) server_metadata_mr->addr;
-	server_recv_sge.length = (uint32_t) server_metadata_mr->length;
+	server_recv_sge.addr = (uint64_t) malloc(buf_size);
+	server_recv_sge.length = (uint32_t) buf_size;
 	server_recv_sge.lkey = (uint32_t) server_metadata_mr->lkey;
 	bzero(&server_recv_wr, sizeof(server_recv_wr));
 	server_recv_wr.sg_list = &server_recv_sge;
@@ -184,52 +184,6 @@ static int client_connect_to_server()
 	}
 
 	printf("The client was connected successfully \n");
-
-	return 0;
-}
-
-//Exchange metadata with server
-static int exchange_metadata() {
-	struct ibv_wc wc[2];
-	int ret = -1;
-
-	client_send_buf_mr = roce_register_buffer(pd, send_buf, strlen(send_buf), (IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE));
-	if(!client_send_buf_mr) {
-		printf("Could not register buffer \n");
-		return ret;
-	}
-
-	client_metadata_attr.address = (uint64_t) client_send_buf_mr->addr; 
-	client_metadata_attr.length = client_send_buf_mr->length; 
-	client_metadata_attr.stag.local_stag = client_send_buf_mr->lkey;
-
-	client_metadata_mr = roce_register_buffer(pd, &client_metadata_attr, sizeof(client_metadata_attr), IBV_ACCESS_LOCAL_WRITE);
-	if(!client_metadata_mr) {
-		printf("Could not register buffer \n");
-		return ret;
-	}
-
-	client_send_sge.addr = (uint64_t) client_metadata_mr->addr;
-	client_send_sge.length = (uint32_t) client_metadata_mr->length;
-	client_send_sge.lkey = client_metadata_mr->lkey;
-
-	bzero(&client_send_wr, sizeof(client_send_wr));
-	client_send_wr.sg_list = &client_send_sge;
-	client_send_wr.num_sge = 1;
-	client_send_wr.opcode = IBV_WR_SEND;
-	client_send_wr.send_flags = IBV_SEND_SIGNALED;
-	
-	ret = ibv_post_send(client_qp, &client_send_wr, &bad_client_send_wr);
-	if (ret) {
-		printf("Could not send client metadata \n");
-		return -errno;
-	}
-	
-	ret = process_wc_events(io_completion_channel, wc, 2);
-	if(ret != 2) {
-		printf("Could not get WC Events \n");
-		return ret;
-	}
 
 	return 0;
 }
@@ -408,8 +362,8 @@ int main(int argc, char **argv) {
 				break;
 			case 'b':
 				buf_size = atoi(optarg);
-				send_buf = calloc(buf_size, 1);
-				recv_buf = calloc(buf_size, 1);
+				send_buf = (char*) malloc(buf_size);
+				recv_buf = (char*) malloc(buf_size);
 				if (!send_buf || !recv_buf) {
 					printf("Could not allocate memory for buffers \n");
 					return 1;
@@ -449,12 +403,6 @@ int main(int argc, char **argv) {
 		return ret;
 	}
 
-	ret = exchange_metadata();
-	if (ret) {
-		printf("Failed to setup client connection , ret = %d \n", ret);
-		return ret;
-	}
-
 	ret = perform_write_read();
 	if (ret) {
 		printf("Could not perform WRITE/READ operations \n");
@@ -464,7 +412,7 @@ int main(int argc, char **argv) {
 	if (check_send_buf_recv_buf()) {
 		printf("Functional test failed \n");
 	} else {
-		printf("Functional test was successful \n");
+		printf("...\n Functional test was successful \n");
 	}
 
 	ret = client_disconnect_and_clean();
