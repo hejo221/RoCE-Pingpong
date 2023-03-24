@@ -79,7 +79,7 @@ static int start_roce_server(struct sockaddr_in *server_addr) {
 		return -errno;
 	}
 	
-	ret = rdma_create_id(cm_event_channel, &cm_server_id, NULL, RDMA_PS_UDP);
+	ret = rdma_create_id(cm_event_channel, &cm_server_id, NULL, RDMA_PS_TCP);
 	if (ret) {
 		printf("Could not create CM ID \n");
 		return -errno;
