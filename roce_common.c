@@ -1,3 +1,6 @@
+// Code acknowledgement: Based on works by Animesh Trivedi (https://github.com/animeshtrivedi/rdma-example)
+// Code extended and adapted for the use with RoCE
+
 #include "roce_common.h"
 
 //Allocate buffer of given size
@@ -39,7 +42,7 @@ struct ibv_mr *roce_register_buffer(struct ibv_pd *pd, void *addr, uint32_t leng
 	return mr;
 }
 
-//Free allocated bufferss
+//Free allocated buffers
 void roce_free_buffer(struct ibv_mr *mr) {
 	if (!mr) {
 		printf("Passed memory region NULL \n");
@@ -76,7 +79,7 @@ int process_rdma_cm_event(struct rdma_event_channel *echannel, enum rdma_cm_even
 		rdma_ack_cm_event(*cm_event);
 		return ret;
 	}
-	
+
 	//Check if Event is of expected type
 	if ((*cm_event)->event != expected_event) {
 		printf("Unexpected event received \n");
@@ -98,13 +101,13 @@ int process_wc_events (struct ibv_comp_channel *comp_channel, struct ibv_wc *wc,
 	    printf("Could not get next CQ event \n");
 	    return -errno;
     }
-    
+
     ret = ibv_req_notify_cq(cq_ptr, 0);
     if (ret){
 	    printf("Could not request more notifications \n");
 	    return -errno;
     }
-    
+
     total_wc = 0;
     do {
 	    ret = ibv_poll_cq(cq_ptr, max_wc - total_wc, wc + total_wc);
@@ -114,7 +117,7 @@ int process_wc_events (struct ibv_comp_channel *comp_channel, struct ibv_wc *wc,
 	    }
 	    total_wc += ret;
     } while (total_wc < max_wc); 
-       
+
 	for( i = 0 ; i < total_wc ; i++) {
 	    if (wc[i].status != IBV_WC_SUCCESS) {
 		    printf("WC returned error \n");
@@ -126,6 +129,7 @@ int process_wc_events (struct ibv_comp_channel *comp_channel, struct ibv_wc *wc,
     return total_wc; 
 }
 
+//Get address information (based on rping.c from librdmacm)
 int get_addr(char *dst, struct sockaddr *addr) {
 	struct addrinfo *res;
 	int ret = -1;
