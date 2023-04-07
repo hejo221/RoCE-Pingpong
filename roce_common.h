@@ -1,3 +1,6 @@
+// Code acknowledgement: Based on works by Animesh Trivedi (https://github.com/animeshtrivedi/rdma-example)
+// Code extended and adapted for the use with RoCE
+
 #ifndef ROCE_COMMON_H
 #define ROCE_COMMON_H
 
@@ -7,7 +10,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
-#include <time.h>
+#include <sys/time.h>
 #include <getopt.h>
 
 #include <netdb.h>
@@ -18,12 +21,14 @@
 #include <rdma/rdma_cma.h>
 #include <infiniband/verbs.h>
 
-#define CQ_CAPACITY (16)
-#define MAX_SGE (2)
-#define MAX_WR (8)
+//Define default values
+#define CQ_CAPACITY (2048)
+#define MAX_SGE (32)
+#define MAX_WR (512)
 #define DEFAULT_RDMA_PORT (4791)
 
-struct __attribute((packed)) rdma_buffer_attr {
+//Structure to exchange buffer information between client and server
+struct __attribute((packed)) roce_buffer_attr {
   uint64_t address;
   uint32_t length;
   union stag {
@@ -53,8 +58,6 @@ struct ibv_mr *roce_register_buffer(struct ibv_pd *pd, void *addr, uint32_t leng
 void roce_deregister_buffer(struct ibv_mr *mr);
 
 //Process WC Events
-int process_wc_events(struct ibv_comp_channel *comp_channel, 
-		struct ibv_wc *wc, 
-		int max_wc);
+int process_wc_events(struct ibv_comp_channel *comp_channel, struct ibv_wc *wc,	int max_wc);
 
-#endif /* ROCE_COMMON_H *
+#endif /* ROCE_COMMON_H */
